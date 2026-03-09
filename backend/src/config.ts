@@ -13,6 +13,33 @@ function optional(key: string, fallback: string): string {
   return process.env[key] ?? fallback;
 }
 
+export interface StaticUser {
+  username: string;
+  password: string;
+  role: 'parent' | 'child';
+}
+
+/**
+ * Parse STATIC_USERS env var.
+ * Format: username:password:role,username2:password2:role2
+ * Role must be 'parent' or 'child'.
+ */
+function parseStaticUsers(raw: string): StaticUser[] {
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [username, password, role] = entry.split(':');
+      if (!username || !password || (role !== 'parent' && role !== 'child')) {
+        throw new Error(
+          `Invalid STATIC_USERS entry "${entry}". Expected format: username:password:parent|child`,
+        );
+      }
+      return { username, password, role };
+    });
+}
+
 export const config = {
   port: parseInt(optional('PORT', '3000'), 10),
   nodeEnv: optional('NODE_ENV', 'development'),
@@ -23,20 +50,8 @@ export const config = {
     refreshExpiresIn: optional('REFRESH_TOKEN_EXPIRES_IN', '30d'),
   },
 
-  apple: {
-    clientId: required('APPLE_CLIENT_ID'),
-    teamId: required('APPLE_TEAM_ID'),
-    keyId: required('APPLE_KEY_ID'),
-    privateKey: required('APPLE_PRIVATE_KEY').replace(/\\n/g, '\n'),
-  },
-
-  // Comma-separated Apple user IDs of the two parents
-  parentAppleIds: new Set(
-    optional('PARENT_APPLE_IDS', '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
-  ),
+  // Static users defined in env – no Apple Developer account needed
+  staticUsers: parseStaticUsers(optional('STATIC_USERS', '')),
 
   spotify: {
     clientId: required('SPOTIFY_CLIENT_ID'),

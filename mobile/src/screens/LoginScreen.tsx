@@ -1,59 +1,37 @@
-/**
- * Login screen with Sign in with Apple.
- *
- * Apple Sign In is the only auth method as per requirements.
- * On iOS it uses the native Apple sheet (in Safari/WebKit).
- * On Android it falls back to a web-based flow via the same library.
- */
 import React, { useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
+  TouchableOpacity,
   StyleSheet,
   Alert,
   ActivityIndicator,
-  Platform,
   SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import {
-  appleAuth,
-  AppleButton,
-} from '@invertase/react-native-apple-authentication';
-import { signInWithApple } from '../api/client';
+import { login } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 
 export function LoginScreen() {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const setUser = useAuthStore((s) => s.setUser);
 
-  async function handleAppleSignIn() {
+  async function handleLogin() {
+    if (!username.trim() || !password.trim()) {
+      Alert.alert('Missing fields', 'Please enter both username and password.');
+      return;
+    }
     setLoading(true);
     try {
-      // Trigger native Apple Sign In sheet
-      const appleAuthRequest = await appleAuth.performRequest({
-        requestedOperation: appleAuth.Operation.LOGIN,
-        requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
-      });
-
-      const { identityToken, fullName } = appleAuthRequest;
-      if (!identityToken) throw new Error('No identity token received from Apple');
-
-      // Verify with our backend and get JWT pair
-      const { accessToken, refreshToken, user } = await signInWithApple(
-        identityToken,
-        fullName
-          ? { givenName: fullName.givenName ?? null, familyName: fullName.familyName ?? null }
-          : null,
-      );
-
+      const { accessToken, refreshToken, user } = await login(username.trim(), password);
       await setUser(user, accessToken, refreshToken);
-      // Navigation is handled automatically by AppNavigator based on auth state
     } catch (error: unknown) {
-      const e = error as { code?: string; message?: string };
-      // Ignore user cancel
-      if (e.code === appleAuth.Error.CANCELED) return;
-      console.error('[LoginScreen] Apple sign in failed:', e);
-      Alert.alert('Sign In Failed', e.message ?? 'Could not sign in with Apple. Please try again.');
+      const e = error as { message?: string };
+      Alert.alert('Sign In Failed', e.message ?? 'Invalid username or password.');
     } finally {
       setLoading(false);
     }
@@ -61,32 +39,54 @@ export function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        {/* Logo / branding */}
+      <KeyboardAvoidingView
+        style={styles.inner}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {/* Branding */}
         <View style={styles.logoContainer}>
           <Text style={styles.logo}>🎵</Text>
           <Text style={styles.appName}>Kids Music</Text>
           <Text style={styles.tagline}>Safe tunes, hand-picked by your parents</Text>
         </View>
 
-        {/* Sign in button */}
-        <View style={styles.authContainer}>
+        {/* Form */}
+        <View style={styles.form}>
+          <TextInput
+            style={styles.input}
+            placeholder="Username"
+            placeholderTextColor="#6B6B6B"
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={username}
+            onChangeText={setUsername}
+            editable={!loading}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            placeholderTextColor="#6B6B6B"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+            editable={!loading}
+            onSubmitEditing={handleLogin}
+            returnKeyType="go"
+          />
+
           {loading ? (
-            <ActivityIndicator size="large" color="#1DB954" />
+            <ActivityIndicator size="large" color="#1DB954" style={styles.spinner} />
           ) : (
-            <AppleButton
-              buttonStyle={AppleButton.Style.WHITE}
-              buttonType={AppleButton.Type.SIGN_IN}
-              style={styles.appleButton}
-              onPress={handleAppleSignIn}
-            />
+            <TouchableOpacity style={styles.button} onPress={handleLogin} activeOpacity={0.8}>
+              <Text style={styles.buttonText}>Sign In</Text>
+            </TouchableOpacity>
           )}
+
           <Text style={styles.hint}>
-            Sign in with your Apple ID.{'\n'}
-            Parents and kids each use their own account.
+            Ask a parent for your username and password.
           </Text>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#121212',
   },
-  content: {
+  inner: {
     flex: 1,
     justifyContent: 'space-between',
     paddingVertical: 60,
@@ -122,14 +122,33 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-  authContainer: {
-    alignItems: 'center',
-    gap: 16,
+  form: {
+    gap: 12,
   },
-  appleButton: {
-    width: '100%',
-    height: 52,
+  input: {
+    backgroundColor: '#1E1E1E',
+    color: '#FFFFFF',
     borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+  },
+  button: {
+    backgroundColor: '#1DB954',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  buttonText: {
+    color: '#000000',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  spinner: {
+    marginVertical: 8,
   },
   hint: {
     color: '#6B6B6B',

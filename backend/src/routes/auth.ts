@@ -1,11 +1,11 @@
 /**
- * POST /auth/apple   – verify Apple identity token, return JWT pair
+ * POST /auth/login   – static username/password login, return JWT pair
  * POST /auth/refresh – rotate refresh token, return new JWT pair
  * POST /auth/logout  – invalidate refresh token
+ * GET  /auth/me      – return current user
  */
 import { Router } from 'express';
 import { z } from 'zod';
-import { verifyAppleToken } from '../auth/apple';
 import { signAccessToken, issueRefreshToken, rotateRefreshToken } from '../auth/jwt';
 import { queries } from '../db';
 import { config } from '../config';
@@ -13,49 +13,37 @@ import { authenticate } from '../middleware/authenticate';
 
 export const authRouter = Router();
 
-const appleSchema = z.object({
-  identityToken: z.string(),
-  // Apple only provides these on first sign-in; omit on subsequent ones
-  fullName: z
-    .object({ givenName: z.string().nullable(), familyName: z.string().nullable() })
-    .optional(),
+const loginSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
 });
 
-authRouter.post('/apple', async (req, res) => {
-  const parsed = appleSchema.safeParse(req.body);
+authRouter.post('/login', (req, res) => {
+  const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid request body', details: parsed.error.flatten() });
+    res.status(400).json({ error: 'username and password are required' });
     return;
   }
 
-  try {
-    const applePayload = await verifyAppleToken(parsed.data.identityToken);
+  const { username, password } = parsed.data;
 
-    const appleUserId = applePayload.sub;
-    const role = config.parentAppleIds.has(appleUserId) ? 'parent' : 'child';
+  const staticUser = config.staticUsers.find(
+    (u) => u.username === username && u.password === password,
+  );
 
-    const fullName = parsed.data.fullName
-      ? [parsed.data.fullName.givenName, parsed.data.fullName.familyName]
-          .filter(Boolean)
-          .join(' ') || null
-      : null;
-
-    queries.upsertUser.run(appleUserId, applePayload.email ?? null, fullName, role);
-
-    // Log the Apple user ID so parents can copy it for PARENT_APPLE_IDS env var
-    if (config.nodeEnv === 'development') {
-      console.log(`[auth] Apple sign-in: sub=${appleUserId} role=${role} email=${applePayload.email}`);
-    }
-
-    const accessToken = signAccessToken({ sub: appleUserId, role });
-    const refreshToken = issueRefreshToken(appleUserId);
-
-    const user = queries.findUser.get(appleUserId);
-    res.json({ accessToken, refreshToken, user });
-  } catch (err) {
-    console.error('[auth/apple]', err);
-    res.status(401).json({ error: 'Apple token verification failed' });
+  if (!staticUser) {
+    res.status(401).json({ error: 'Invalid username or password' });
+    return;
   }
+
+  // Upsert user record (id = username)
+  queries.upsertUser.run(username, null, username, staticUser.role);
+
+  const accessToken = signAccessToken({ sub: username, role: staticUser.role });
+  const refreshToken = issueRefreshToken(username);
+
+  const user = queries.findUser.get(username);
+  res.json({ accessToken, refreshToken, user });
 });
 
 authRouter.post('/refresh', (req, res) => {

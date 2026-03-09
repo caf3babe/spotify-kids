@@ -131,17 +131,14 @@ async function apiFetch<T>(
 
 // ── Auth endpoints ────────────────────────────────────────────────────────────
 
-export async function signInWithApple(
-  identityToken: string,
-  fullName?: { givenName?: string | null; familyName?: string | null } | null,
+export async function login(
+  username: string,
+  password: string,
 ): Promise<{ accessToken: string; refreshToken: string; user: User }> {
-  const body: Record<string, unknown> = { identityToken };
-  if (fullName) body.fullName = fullName;
-
-  const res = await fetch(`${BASE_URL}/auth/apple`, {
+  const res = await fetch(`${BASE_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ username, password }),
   });
 
   if (!res.ok) {
