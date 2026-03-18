@@ -2,16 +2,11 @@
 # deploy-ios.sh — Baut die SpotifyKids App und installiert sie auf einem iPhone (USB oder WiFi).
 #
 # Voraussetzungen (einmalig installieren):
-#   brew install xcbeautify       # optional, schönere xcodebuild-Ausgabe
-#   npm install -g ios-deploy     # installiert .app auf iPhone via USB oder WiFi
+#   brew install libimobiledevice  # Geräteerkennung ohne Xcode
+#   brew install xcbeautify        # optional, schönere xcodebuild-Ausgabe
+#   npm install -g ios-deploy      # installiert .app auf iPhone via USB oder WiFi
 #
-# WiFi-Pairing (einmalig, danach kein Kabel mehr nötig):
-#   1. iPhone einmal per USB verbinden
-#   2. Xcode öffnen → Window → Devices and Simulators → Gerät auswählen
-#      → "Connect via network" aktivieren → USB abziehen
-#   Danach erkennt dieses Script das iPhone automatisch über WiFi.
-#
-# Einmalig in Xcode öffnen (nur beim allerersten Mal):
+# Einmalig in Xcode öffnen (nur beim allerersten Mal für Code-Signing):
 #   open ios/SpotifyKids.xcworkspace
 #   → Signing & Capabilities → Team = deine Apple ID → Xcode schließen
 #
@@ -26,29 +21,35 @@ WORKSPACE="ios/${SCHEME}.xcworkspace"
 DERIVED_DATA="build/DerivedData"
 
 # ─── 1. Verbundenes iPhone erkennen ──────────────────────────────────────────
+# Verwendet idevice_id (libimobiledevice) – funktioniert ohne Xcode.
+# Fallback: ios-deploy --detect
 
-echo "🔍 Suche iPhone (USB oder WiFi)..."
-# xcrun listet sowohl USB- als auch WiFi-gekoppelte Geräte (außer Simulatoren)
-UDID=$(xcrun xctrace list devices 2>&1 \
-  | grep -E "iPhone.+\([0-9A-F-]{36}\)" \
-  | grep -v Simulator \
-  | head -1 \
-  | grep -oE "\([0-9A-F-]{36}\)" \
-  | tr -d "()")
+echo "🔍 Suche iPhone via USB..."
+
+UDID=""
+DEVICE_NAME="iPhone"
+
+if command -v idevice_id &>/dev/null; then
+  UDID=$(idevice_id -l 2>/dev/null | head -1)
+  if [[ -n "$UDID" ]] && command -v ideviceinfo &>/dev/null; then
+    DEVICE_NAME=$(ideviceinfo -u "$UDID" -k DeviceName 2>/dev/null || echo "iPhone")
+  fi
+fi
+
+# Fallback auf ios-deploy (ist sowieso Voraussetzung)
+if [[ -z "$UDID" ]] && command -v ios-deploy &>/dev/null; then
+  echo "   (idevice_id nicht gefunden, versuche ios-deploy...)"
+  DETECT=$(ios-deploy --detect --timeout 5 2>&1 || true)
+  UDID=$(echo "$DETECT" | grep -oE '[0-9A-Fa-f-]{36,40}' | head -1)
+  DEVICE_NAME=$(echo "$DETECT" | grep -oE 'Found [^(]+' | head -1 | sed 's/^Found //')
+fi
 
 if [[ -z "$UDID" ]]; then
   echo "❌ Kein iPhone gefunden."
-  echo "   Via USB:  Kabel anschließen, iPhone entsperren, 'Diesem Computer vertrauen' bestätigen."
-  echo "   Via WiFi: Einmalig per USB pairen (Xcode → Devices → 'Connect via network')."
+  echo "   → Kabel anschließen, iPhone entsperren, 'Diesem Computer vertrauen' bestätigen."
+  echo "   → Falls noch nicht installiert: brew install libimobiledevice"
   exit 1
 fi
-
-DEVICE_NAME=$(xcrun xctrace list devices 2>&1 \
-  | grep "$UDID" \
-  | grep -v Simulator \
-  | head -1 \
-  | sed 's/ ([0-9.]*//' \
-  | sed 's/ (.*$//')
 
 echo "✅ Gefunden: ${DEVICE_NAME} (${UDID})"
 
