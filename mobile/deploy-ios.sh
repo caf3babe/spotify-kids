@@ -1,9 +1,15 @@
 #!/usr/bin/env zsh
-# deploy-ios.sh — Baut die SpotifyKids App und installiert sie auf einem verbundenen iPhone.
+# deploy-ios.sh — Baut die SpotifyKids App und installiert sie auf einem iPhone (USB oder WiFi).
 #
 # Voraussetzungen (einmalig installieren):
 #   brew install xcbeautify       # optional, schönere xcodebuild-Ausgabe
-#   npm install -g ios-deploy     # installiert .app auf iPhone via USB
+#   npm install -g ios-deploy     # installiert .app auf iPhone via USB oder WiFi
+#
+# WiFi-Pairing (einmalig, danach kein Kabel mehr nötig):
+#   1. iPhone einmal per USB verbinden
+#   2. Xcode öffnen → Window → Devices and Simulators → Gerät auswählen
+#      → "Connect via network" aktivieren → USB abziehen
+#   Danach erkennt dieses Script das iPhone automatisch über WiFi.
 #
 # Einmalig in Xcode öffnen (nur beim allerersten Mal):
 #   open ios/SpotifyKids.xcworkspace
@@ -21,7 +27,8 @@ DERIVED_DATA="build/DerivedData"
 
 # ─── 1. Verbundenes iPhone erkennen ──────────────────────────────────────────
 
-echo "🔍 Suche verbundenes iPhone..."
+echo "🔍 Suche iPhone (USB oder WiFi)..."
+# xcrun listet sowohl USB- als auch WiFi-gekoppelte Geräte (außer Simulatoren)
 UDID=$(xcrun xctrace list devices 2>&1 \
   | grep -E "iPhone.+\([0-9A-F-]{36}\)" \
   | grep -v Simulator \
@@ -31,7 +38,8 @@ UDID=$(xcrun xctrace list devices 2>&1 \
 
 if [[ -z "$UDID" ]]; then
   echo "❌ Kein iPhone gefunden."
-  echo "   → USB-Kabel prüfen, iPhone entsperren, und 'Diesem Computer vertrauen' bestätigen."
+  echo "   Via USB:  Kabel anschließen, iPhone entsperren, 'Diesem Computer vertrauen' bestätigen."
+  echo "   Via WiFi: Einmalig per USB pairen (Xcode → Devices → 'Connect via network')."
   exit 1
 fi
 
@@ -89,7 +97,7 @@ fi
 
 echo ""
 echo "📲 Installiere auf iPhone..."
-ios-deploy --id "$UDID" --bundle "$APP" --no-wifi --justlaunch
+ios-deploy --id "$UDID" --bundle "$APP" --justlaunch
 
 echo ""
 echo "🎉 Fertig! App wurde auf ${DEVICE_NAME} installiert und gestartet."
