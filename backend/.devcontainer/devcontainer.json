@@ -1,0 +1,41 @@
+{
+  "name": "Spotify Kids Backend",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bullseye",
+
+  // Workspace-Root im Container
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+
+  // node_modules als eigenes Volume – verhindert, dass macOS-kompilierte
+  // native Module (z. B. better-sqlite3) in den Container gelangen.
+  // Das Volume wird beim ersten `npm install` mit Linux-Binaries befüllt.
+  "mounts": [
+    "source=spotify-kids-backend-node-modules,target=/workspace/node_modules,type=volume"
+  ],
+
+  // Nach Container-Erstellung: Dependencies installieren + .env anlegen
+  "postCreateCommand": "npm install && ([ -f .env ] || cp .env.example .env)",
+
+  // Port für den Express-Server
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Backend API",
+      "onAutoForward": "notify"
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-vscode.vscode-typescript-next"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "typescript.preferences.importModuleSpecifier": "relative"
+      }
+    }
+  }
+}
